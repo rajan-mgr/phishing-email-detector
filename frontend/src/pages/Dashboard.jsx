@@ -1,15 +1,39 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { scanEmails, getStats, getHistory } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import MetricCard from "../components/MetricCard";
 
-const TIME_FILTERS = [
-  { label: "10 Days", days: 10 },
-  { label: "1 Month", days: 30 },
-  { label: "3 Months", days: 90 },
-  { label: "All Time", days: 0 },
+const SORT_OPTIONS = [
+  { label: "Newest First", value: "newest" },
+  { label: "Oldest First", value: "oldest" },
+  { label: "Phishing First", value: "phishing" },
+  { label: "Safe First", value: "safe" },
 ];
+
+const SCAN_STEPS = [
+  "Connecting to inbox...",
+  "Fetching emails...",
+  "Running ML analysis...",
+  "Checking URLs...",
+  "Finalizing results...",
+];
+
+function sortEmails(emails, sortBy) {
+  const sorted = [...emails];
+  switch (sortBy) {
+    case "newest":
+      return sorted.sort((a, b) => new Date(b.scanned_at) - new Date(a.scanned_at));
+    case "oldest":
+      return sorted.sort((a, b) => new Date(a.scanned_at) - new Date(b.scanned_at));
+    case "phishing":
+      return sorted.sort((a) => (a.verdict === "phishing" ? -1 : 1));
+    case "safe":
+      return sorted.sort((a) => (a.verdict === "legitimate" ? -1 : 1));
+    default:
+      return sorted;
+  }
+}
 
 export default function Dashboard() {
   const { autoScan } = useAuth();
@@ -17,12 +41,15 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recentEmails, setRecentEmails] = useState([]);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [scanStep, setScanStep] = useState("");
   const [error, setError] = useState(null);
-  const [activeFilter, setActiveFilter] = useState(3);
+  const [activeSort, setActiveSort] = useState("newest");
+  const progressInterval = useRef(null);
 
   useEffect(() => {
     loadData();
-  }, [activeFilter]);
+  }, []);
 
   useEffect(() => {
     if (autoScan && recentEmails.length === 0) {
@@ -32,21 +59,60 @@ export default function Dashboard() {
 
   async function loadData() {
     try {
-      const days = TIME_FILTERS[activeFilter].days;
       const [statsRes, historyRes] = await Promise.all([
-        getStats(days).catch(() => ({ data: null })),
-        getHistory(days).catch(() => ({ data: { results: [] } })),
+        getStats(0).catch(() => ({ data: null })),
+        getHistory(0).catch(() => ({ data: { results: [] } })),
       ]);
       setStats(statsRes.data);
-      setRecentEmails(historyRes.data.results?.slice(0, 10) || []);
+      setRecentEmails(historyRes.data.results?.slice(0, 50) || []);
     } catch {
       setError("Failed to load data");
     }
   }
 
+  function startProgressSimulation() {
+    setScanProgress(0);
+    setScanStep(SCAN_STEPS[0]);
+    let step = 0;
+    let progress = 0;
+
+    progressInterval.current = setInterval(() => {
+      progress += Math.random() * 6 + 2;
+
+      const stepIndex = Math.min(
+        Math.floor((progress / 100) * SCAN_STEPS.length),
+        SCAN_STEPS.length - 1
+      );
+      if (stepIndex !== step) {
+        step = stepIndex;
+        setScanStep(SCAN_STEPS[step]);
+      }
+
+      if (progress >= 90) {
+        clearInterval(progressInterval.current);
+        setScanProgress(90);
+        return;
+      }
+      setScanProgress(Math.min(progress, 90));
+    }, 400);
+  }
+
+  function finishProgress() {
+    clearInterval(progressInterval.current);
+    setScanStep("Done!");
+    setScanProgress(100);
+    setTimeout(() => {
+      setScanning(false);
+      setScanProgress(0);
+      setScanStep("");
+    }, 800);
+  }
+
   async function handleScan() {
     setScanning(true);
     setError(null);
+    startProgressSimulation();
+
     try {
       const res = await scanEmails();
       setStats((prev) => ({
@@ -55,17 +121,24 @@ export default function Dashboard() {
         phishing_count: (prev?.phishing_count || 0) + res.data.phishing_count,
         legitimate_count: (prev?.legitimate_count || 0) + res.data.legitimate_count,
       }));
-      setRecentEmails((prev) => [...res.data.emails, ...prev].slice(0, 10));
+      setRecentEmails((prev) =>
+        [...(res.data.results || res.data.emails || []), ...prev].slice(0, 50)
+      );
+      finishProgress();
     } catch {
-      setError("Scan failed. Please try again.");
-    } finally {
+      clearInterval(progressInterval.current);
       setScanning(false);
+      setScanProgress(0);
+      setScanStep("");
+      setError("Scan failed. Please try again.");
     }
   }
 
   const phishingRate = stats?.total_scanned
     ? ((stats.phishing_count / stats.total_scanned) * 100).toFixed(1)
     : "0";
+
+  const displayedEmails = sortEmails(recentEmails, activeSort);
 
   return (
     <div>
@@ -84,12 +157,32 @@ export default function Dashboard() {
           disabled={scanning}
           className="bg-gradient-to-r from-secondary-container to-primary-container text-on-primary-container text-[14px] leading-[1.2] tracking-[0.02em] font-medium font-[JetBrains_Mono] px-6 py-2 rounded-lg hover:scale-[1.02] transition-transform shadow-lg shadow-primary/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="material-symbols-outlined text-sm">
+          <span className={`material-symbols-outlined text-sm ${scanning ? "animate-spin" : ""}`}>
             {scanning ? "sync" : "radar"}
           </span>
           {scanning ? "Scanning..." : "Scan Inbox"}
         </button>
       </div>
+
+      {/* Scan Progress Bar */}
+      {scanning && (
+        <div className="glass-panel rounded-xl p-4 mb-6 border border-primary/20">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-primary">
+              {scanStep}
+            </span>
+            <span className="text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-on-surface-variant">
+              {Math.round(scanProgress)}%
+            </span>
+          </div>
+          <div className="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-secondary-container to-primary-container transition-all duration-500 ease-out"
+              style={{ width: `${scanProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -97,23 +190,6 @@ export default function Dashboard() {
           {error}
         </div>
       )}
-
-      {/* Time Filters */}
-      <div className="flex flex-wrap gap-2 mb-8">
-        {TIME_FILTERS.map((filter, i) => (
-          <button
-            key={filter.label}
-            onClick={() => setActiveFilter(i)}
-            className={`px-4 py-1.5 rounded-full text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] transition-colors ${
-              i === activeFilter
-                ? "border border-primary text-primary bg-primary/10"
-                : "border border-outline-variant/50 text-on-surface-variant hover:border-outline hover:text-on-surface"
-            }`}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -126,7 +202,7 @@ export default function Dashboard() {
         <MetricCard
           title="Phishing Detected"
           value={stats?.phishing_count || 0}
-          icon="shield_alert"
+          icon="gpp_bad"
           type="danger"
         />
         <MetricCard
@@ -174,13 +250,34 @@ export default function Dashboard() {
 
       {/* Recent Scans */}
       <div className="glass-panel rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-outline-variant/30 flex items-center justify-between">
-          <h2 className="text-[24px] leading-[1.3] font-semibold font-[Geist] text-on-surface">
-            Recent Scans
-          </h2>
-          <span className="bg-surface-container-high border border-outline-variant/50 text-on-surface-variant text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] px-2 py-1 rounded-full">
-            {recentEmails.length} emails
-          </span>
+        <div className="p-4 border-b border-outline-variant/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-[24px] leading-[1.3] font-semibold font-[Geist] text-on-surface">
+              Recent Scans
+            </h2>
+            <span className="bg-surface-container-high border border-outline-variant/50 text-on-surface-variant text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] px-2 py-1 rounded-full">
+              {recentEmails.length} emails
+            </span>
+          </div>
+
+          {/* Sort Controls */}
+          {recentEmails.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setActiveSort(opt.value)}
+                  className={`px-3 py-1 rounded-full text-[11px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] transition-colors ${
+                    activeSort === opt.value
+                      ? "border border-primary text-primary bg-primary/10"
+                      : "border border-outline-variant/50 text-on-surface-variant hover:border-outline hover:text-on-surface"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {recentEmails.length === 0 ? (
@@ -206,11 +303,19 @@ export default function Dashboard() {
                   <th className="p-4 text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-on-surface-variant">Sender</th>
                   <th className="p-4 text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-on-surface-variant">Verdict</th>
                   <th className="p-4 text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-on-surface-variant">Confidence</th>
-                  <th className="p-4 text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-on-surface-variant text-right">Date</th>
+                  <th
+                    className="p-4 text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] text-on-surface-variant text-right cursor-pointer hover:text-on-surface select-none"
+                    onClick={() => setActiveSort(activeSort === "newest" ? "oldest" : "newest")}
+                  >
+                    Date
+                    <span className="ml-1 text-[10px]">
+                      {activeSort === "oldest" ? "↑" : "↓"}
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/20">
-                {recentEmails.map((email) => (
+                {displayedEmails.map((email) => (
                   <tr
                     key={email.id}
                     onClick={() => navigate(`/email/${email.id}`)}
@@ -228,11 +333,13 @@ export default function Dashboard() {
                       </div>
                     </td>
                     <td className="p-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] ${
-                        email.verdict === "phishing"
-                          ? "bg-error/10 border border-error/50 text-error pulse-threat"
-                          : "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] leading-[1.2] tracking-[0.05em] font-medium font-[JetBrains_Mono] ${
+                          email.verdict === "phishing"
+                            ? "bg-error/10 border border-error/50 text-error pulse-threat"
+                            : "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
+                        }`}
+                      >
                         <span className="material-symbols-outlined text-[14px]">
                           {email.verdict === "phishing" ? "warning" : "check_circle"}
                         </span>
@@ -241,9 +348,11 @@ export default function Dashboard() {
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[14px] leading-[1.2] tracking-[0.02em] font-medium font-[JetBrains_Mono] ${
-                          email.verdict === "phishing" ? "text-error" : "text-emerald-400"
-                        }`}>
+                        <span
+                          className={`text-[14px] leading-[1.2] tracking-[0.02em] font-medium font-[JetBrains_Mono] ${
+                            email.verdict === "phishing" ? "text-error" : "text-emerald-400"
+                          }`}
+                        >
                           {(email.confidence * 100).toFixed(0)}%
                         </span>
                         <div className="w-16 h-1.5 bg-surface-container-highest rounded-full overflow-hidden">

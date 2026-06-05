@@ -13,40 +13,109 @@ MODEL_LR   = os.path.join(BASE_DIR, '..', 'data', 'model_lr.pkl')
 MODEL_RF   = os.path.join(BASE_DIR, '..', 'data', 'model_rf.pkl')
 
 # ── Whitelist of known legitimate domains ─────────────────────────────────────
+# Subdomain matching is automatic — adding 'anthropic.com' covers
+# 'mail.anthropic.com', 'no-reply@mail.anthropic.com', etc.
 LEGITIMATE_DOMAINS = {
+    # Dev & code hosting
     'github.com', 'gitlab.com', 'bitbucket.org',
+    'stackoverflow.com', 'stackexchange.com',
+    'vercel.com', 'netlify.com', 'heroku.com',
+    'railway.app', 'render.com',
+
+    # Google
     'google.com', 'gmail.com', 'googlemail.com',
-    'microsoft.com', 'outlook.com', 'hotmail.com', 'live.com',
+    'googleapis.com', 'googleusercontent.com',
+    'accounts.google.com',
+
+    # Microsoft
+    'microsoft.com', 'outlook.com', 'hotmail.com',
+    'live.com', 'office.com', 'azure.com',
+    'teams.microsoft.com',
+
+    # Apple
     'apple.com', 'icloud.com',
-    'amazon.com', 'aws.amazon.com',
-    'facebook.com', 'instagram.com', 'whatsapp.com',
+
+    # Amazon / AWS
+    'amazon.com', 'amazonaws.com', 'aws.amazon.com',
+
+    # Social
+    'facebook.com', 'facebookmail.com', 'meta.com',
+    'instagram.com', 'whatsapp.com',
     'twitter.com', 'x.com',
-    'linkedin.com', 'slack.com', 'discord.com',
-    'twitch.tv', 'youtube.com', 'netflix.com',
-    'spotify.com', 'steam.com', 'epicgames.com',
-    'reddit.com', 'stackoverflow.com', 'stackexchange.com',
+    'linkedin.com',
+    'reddit.com',
+    'pinterest.com', 'tumblr.com',
+    'snapchat.com',
+    'tiktok.com',
+
+    # Messaging / Productivity
+    'slack.com', 'discord.com',
+    'zoom.us', 'webex.com',
     'notion.so', 'figma.com', 'canva.com',
     'miro.com', 'trello.com', 'asana.com',
+    'airtable.com', 'monday.com',
+
+    # Storage
     'dropbox.com', 'box.com',
+    'drive.google.com',
+
+    # Payment
     'paypal.com', 'stripe.com', 'square.com',
-    'huggingface.co', 'openai.com',
-    'pinterest.com', 'tumblr.com',
-    'zoom.us', 'teams.microsoft.com',
+    'razorpay.com', 'esewa.com.np', 'khalti.com',
+
+    # AI / ML
+    'openai.com', 'anthropic.com', 'huggingface.co',
+    'kaggle.com', 'colab.research.google.com',
+
+    # Streaming / Entertainment
+    'youtube.com', 'netflix.com', 'spotify.com',
+    'twitch.tv', 'patreon.com', 'creator.patreon.com',
+    'info.patreon.com',
+
+    # Gaming
+    'steampowered.com', 'epicgames.com',
+    'chess.com', 'moonton.com',
+
+    # E-commerce
+    'daraz.com.np', 'sastodeal.com',
+    'ebay.com', 'etsy.com', 'shopify.com',
+
+    # CDN / Infrastructure
+    'cloudflare.com', 'fastly.com',
+    'jsdelivr.net', 'cdnjs.cloudflare.com',
+    'fontawesome.com',
+    'sendgrid.net', 'mailchimp.com', 'mailgun.org',
+    'amazonses.com',  # Amazon SES — used by many legit services
+
+    # Telecom / Utility
+    'truecaller.com', 'telegram.org',
+
+    # Education
+    'coursera.org', 'udemy.com', 'edx.org',
+    'khanacademy.org',
+
+    # Reference
+    'wikipedia.org', 'wikimedia.org',
+
+    # Browsers
+    'mozilla.org', 'brave.com', 'opera.com',
+
+    # Hardware
+    'dell.com', 'hp.com', 'lenovo.com',
+    'samsung.com', 'sony.com', 'intel.com',
+    'nvidia.com', 'cisco.com',
+
+    # Enterprise
     'adobe.com', 'salesforce.com',
     'ibm.com', 'oracle.com', 'sap.com',
-    'cisco.com', 'intel.com', 'nvidia.com',
-    'dell.com', 'hp.com', 'lenovo.com',
-    'samsung.com', 'sony.com',
+    'hubspot.com', 'zendesk.com',
+
+    # Publishing
     'medium.com', 'substack.com',
-    'coursera.org', 'udemy.com', 'edx.org',
-    'wikipedia.org', 'wikimedia.org',
-    'mozilla.org', 'firefox.com',
-    'brave.com', 'opera.com',
-    'vivaldi.com', 'edge.microsoft.com',
 }
 
 # ── Active model state ────────────────────────────────────────────────────────
-_active_model_name = "rf"  # "lr" or "rf"
+_active_model_name = "rf"
 _model_lr = None
 _model_rf = None
 _vectorizer = None
@@ -58,9 +127,9 @@ def _load_models():
         _model_lr = joblib.load(MODEL_LR)
         _model_rf = joblib.load(MODEL_RF)
         _vectorizer = load_vectorizer()
-        print("Models and vectorizer loaded")
+        print("✅ Models and vectorizer loaded")
     except FileNotFoundError as e:
-        print(f"Warning: {e}")
+        print(f"⚠️  Warning: {e}")
 
 
 def get_active_model():
@@ -75,24 +144,15 @@ def set_active_model(name):
 
 
 def get_model_object():
-    if _active_model_name == "lr":
-        return _model_lr
-    return _model_rf
+    return _model_lr if _active_model_name == "lr" else _model_rf
 
 
 def get_model_info():
-    """Return info about both models for the API."""
     return {
         "active": _active_model_name,
         "models": {
-            "lr": {
-                "name": "Logistic Regression",
-                "loaded": _model_lr is not None,
-            },
-            "rf": {
-                "name": "Random Forest",
-                "loaded": _model_rf is not None,
-            },
+            "lr": {"name": "Logistic Regression", "loaded": _model_lr is not None},
+            "rf": {"name": "Random Forest",        "loaded": _model_rf is not None},
         }
     }
 
@@ -101,20 +161,39 @@ def get_model_info():
 _load_models()
 
 
-def _extract_domains(text: str) -> set:
-    domain_pattern = r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b'
-    domains = re.findall(domain_pattern, text.lower())
-    return set(domains)
+def _extract_sender_domain(sender: str) -> str:
+    """
+    Reliably extract the domain from a sender string like:
+      'Anthropic <no-reply@mail.anthropic.com>'
+      'no-reply@mail.anthropic.com'
+      'notifications@vercel.com'
+    Returns lowercase domain string or empty string.
+    """
+    # Pull email address from angle brackets if present
+    match = re.search(r'<([^>]+)>', sender)
+    email = match.group(1) if match else sender.strip()
+
+    # Extract domain after @
+    if '@' in email:
+        domain = email.split('@')[-1].strip().lower()
+        # Strip any trailing > or whitespace
+        domain = re.sub(r'[>\s]', '', domain)
+        return domain
+    return ""
 
 
-def _is_whitelisted_domain(text: str) -> bool:
-    domains = _extract_domains(text)
-    for domain in domains:
-        parts = domain.split('.')
-        for i in range(len(parts) - 1):
-            parent = '.'.join(parts[i:])
-            if parent in LEGITIMATE_DOMAINS:
-                return True
+def _is_whitelisted(domain: str) -> bool:
+    """
+    Check if a domain or any of its parent domains is in the whitelist.
+    e.g. 'mail.anthropic.com' → checks 'mail.anthropic.com', 'anthropic.com'
+    """
+    if not domain:
+        return False
+    parts = domain.split('.')
+    for i in range(len(parts) - 1):
+        candidate = '.'.join(parts[i:])
+        if candidate in LEGITIMATE_DOMAINS:
+            return True
     return False
 
 
@@ -125,7 +204,9 @@ def predict_email(subject: str, body: str, sender: str = "") -> dict:
 
     text = f"{subject} {body}".strip()
 
-    sender_whitelisted = _is_whitelisted_domain(sender) if sender else False
+    # Extract and check sender domain properly
+    sender_domain = _extract_sender_domain(sender)
+    sender_whitelisted = _is_whitelisted(sender_domain)
 
     text_series = pd.Series([text])
     features = build_features(text_series, _vectorizer)
@@ -134,21 +215,19 @@ def predict_email(subject: str, body: str, sender: str = "") -> dict:
     proba = model.predict_proba(features)[0]
     confidence = float(proba[label])
 
-    if sender_whitelisted and label == 1 and confidence < 0.95:
+    # If sender is a known-good domain, only flag if model is extremely certain.
+    # Threshold 0.97 means: even if model says phishing, trust the whitelist
+    # unless it's nearly certain (covers cases like actual phishing spoofing legit domains)
+    if sender_whitelisted and label == 1 and confidence < 0.97:
         label = 0
         confidence = float(proba[0])
 
     if label == 1:
-        if confidence >= 0.85:
-            risk = "high"
-        elif confidence >= 0.65:
-            risk = "medium"
-        else:
-            risk = "low"
+        risk = "high" if confidence >= 0.85 else "medium" if confidence >= 0.65 else "low"
     else:
-        risk = "low"
+        risk = "none"
 
-    flags = _get_flags(text)
+    flags = _get_flags(text, sender_domain, sender_whitelisted)
 
     return {
         "label": label,
@@ -157,12 +236,17 @@ def predict_email(subject: str, body: str, sender: str = "") -> dict:
         "risk_level": risk,
         "flags": flags,
         "model_used": _active_model_name,
+        "sender_domain": sender_domain,
+        "sender_whitelisted": sender_whitelisted,
     }
 
 
-def _get_flags(text: str) -> list:
+def _get_flags(text: str, sender_domain: str = "", whitelisted: bool = False) -> list:
     text_lower = text.lower()
     flags = []
+
+    if whitelisted:
+        flags.append(f"Sender domain verified: {sender_domain}")
 
     if text.count('http') > 2:
         flags.append(f"Contains {text.count('http')} URLs")

@@ -1,11 +1,4 @@
 export default function MetricCard({ title, value, subtitle, icon, type = "default" }) {
-  const borderColors = {
-    default: "border-l-primary",
-    danger: "border-l-error",
-    success: "border-l-emerald-500",
-    warning: "border-l-amber-500",
-  };
-
   const iconBgColors = {
     default: "bg-primary/10 text-primary",
     danger: "bg-error/10 text-error",
@@ -21,9 +14,9 @@ export default function MetricCard({ title, value, subtitle, icon, type = "defau
   };
 
   return (
-    <div className={`glass-panel rounded-xl p-5 border-l-4 ${borderColors[type]} hover:scale-[1.02] transition-transform duration-200`}>
+    <div className="glass-panel rounded-xl p-5 border border-outline-variant/20 hover:scale-[1.02] transition-transform duration-200">
       <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${iconBgColors[type]}`}>
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconBgColors[type]}`}>
           <span className="material-symbols-outlined text-xl">{icon}</span>
         </div>
       </div>

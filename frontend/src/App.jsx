@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Sidebar from "./components/Sidebar";
 import Login from "./pages/Login";
@@ -17,18 +17,29 @@ function PrivateRoute({ children }) {
 
 function App() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const isLoginPage = location.pathname === "/login";
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen text-on-surface-variant text-lg">Loading PhishGuard...</div>;
   }
 
+  // Login gets its own full-screen layout
+  if (isLoginPage) {
+    return (
+      <Routes>
+        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+      </Routes>
+    );
+  }
+
+  // All other pages get the sidebar layout
   return (
     <div className="min-h-screen flex antialiased">
       <Sidebar />
       <main className="flex-1 md:ml-72 flex flex-col min-h-screen">
         <div className="p-4 md:p-6 lg:p-[48px] max-w-[1440px] mx-auto w-full">
           <Routes>
-            <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/history" element={<PrivateRoute><History /></PrivateRoute>} />
             <Route path="/quick-scan" element={<PrivateRoute><QuickScan /></PrivateRoute>} />
