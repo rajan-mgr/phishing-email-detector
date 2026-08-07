@@ -1,0 +1,29 @@
+# Secrets - never push these
+.env
+credentials.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# ML model
+ml/model.pkl
+
+# Database
+*.db
+*.sqlite3
+
+# Data files
+data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
